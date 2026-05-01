@@ -33,9 +33,17 @@ export default function SessionSelect() {
     setCreating(false);
   };
 
-  const joinSession = (session: Session) => {
+  const joinSession = async (session: Session) => {
     useStore.getState().setSessionId(session.id);
     const effectiveRole = mode === 'overlay' ? 'overlay' : role;
+    if (effectiveRole === 'player' && twitchUser) {
+      await axios.post(`${API}/api/admin/sessions/${session.id}/players`, {
+        twitch_id: twitchUser.id,
+        twitch_login: twitchUser.login,
+        display_name: twitchUser.display_name,
+        profile_image_url: twitchUser.profile_image_url,
+      });
+    }
     if (effectiveRole === 'player') navigate(`/player/${session.id}`);
     else if (effectiveRole === 'host') navigate(`/host/${session.id}`);
     else if (effectiveRole === 'overlay') navigate(`/overlay/${session.id}`);
