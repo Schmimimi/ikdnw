@@ -11,7 +11,10 @@ export default function AdminPanel() {
   const [loading, setLoading] = useState(false);
 
   // Forms
-  const [newPlayer, setNewPlayer] = useState({ twitch_id: '', twitch_login: '', display_name: '', profile_image_url: '' });
+  const [playerLogin, setPlayerLogin] = useState('');
+  const [playerPreview, setPlayerPreview] = useState<{ twitch_id: string; twitch_login: string; display_name: string; profile_image_url: string } | null>(null);
+  const [playerLookupError, setPlayerLookupError] = useState('');
+  const [playerLookupLoading, setPlayerLookupLoading] = useState(false);
   const [newCategory, setNewCategory] = useState({ name: '', description: '', owner_player_id: '', assigned_to_player_id: '' });
   const [newQuestion, setNewQuestion] = useState({ question_text: '', answer_text: '', difficulty: 'normal' });
   const [activeCategoryId, setActiveCategoryId] = useState<string | null>(null);
@@ -34,10 +37,26 @@ export default function AdminPanel() {
 
   const refresh = () => activeSession && loadSession(activeSession.id);
 
+  const lookupPlayer = async () => {
+    if (!playerLogin.trim()) return;
+    setPlayerLookupLoading(true);
+    setPlayerLookupError('');
+    setPlayerPreview(null);
+    try {
+      const { data } = await axios.get(`${API}/api/admin/twitch-user/${playerLogin.trim().toLowerCase()}`);
+      setPlayerPreview(data);
+    } catch {
+      setPlayerLookupError('Twitch-User nicht gefunden.');
+    } finally {
+      setPlayerLookupLoading(false);
+    }
+  };
+
   const addPlayer = async () => {
-    if (!activeSession || !newPlayer.twitch_id) return;
-    await axios.post(`${API}/api/admin/sessions/${activeSession.id}/players`, newPlayer);
-    setNewPlayer({ twitch_id: '', twitch_login: '', display_name: '', profile_image_url: '' });
+    if (!activeSession || !playerPreview) return;
+    await axios.post(`${API}/api/admin/sessions/${activeSession.id}/players`, playerPreview);
+    setPlayerLogin('');
+    setPlayerPreview(null);
     refresh();
   };
 
@@ -128,22 +147,40 @@ export default function AdminPanel() {
 
               <div className="border-t border-white/5 pt-4 flex flex-col gap-2">
                 <div className="text-xs text-gray-500 mb-1">Spieler hinzufügen</div>
-                {(['twitch_id', 'twitch_login', 'display_name', 'profile_image_url'] as const).map(field => (
+                <div className="flex gap-2">
                   <input
-                    key={field}
-                    value={newPlayer[field]}
-                    onChange={e => setNewPlayer(p => ({ ...p, [field]: e.target.value }))}
-                    placeholder={field.replace(/_/g, ' ')}
-                    className="w-full bg-black/40 border border-white/10 rounded-lg px-3 py-2 text-sm text-white outline-none placeholder-gray-600"
+                    value={playerLogin}
+                    onChange={e => { setPlayerLogin(e.target.value); setPlayerPreview(null); setPlayerLookupError(''); }}
+                    onKeyDown={e => e.key === 'Enter' && lookupPlayer()}
+                    placeholder="Twitch-Login (z.B. shroud)"
+                    className="flex-1 bg-black/40 border border-white/10 rounded-lg px-3 py-2 text-sm text-white outline-none placeholder-gray-600"
                   />
-                ))}
-                <button
-                  onClick={addPlayer}
-                  className="w-full py-2 rounded-lg text-sm font-semibold text-white mt-1"
-                  style={{ background: 'var(--purple)' }}
-                >
-                  + Spieler hinzufügen
-                </button>
+                  <button
+                    onClick={lookupPlayer}
+                    disabled={playerLookupLoading || !playerLogin.trim()}
+                    className="px-3 py-2 rounded-lg text-sm font-semibold text-white disabled:opacity-40"
+                    style={{ background: 'var(--purple)' }}
+                  >
+                    {playerLookupLoading ? '...' : '🔍'}
+                  </button>
+                </div>
+                {playerLookupError && <div className="text-red-400 text-xs">{playerLookupError}</div>}
+                {playerPreview && (
+                  <div className="flex items-center gap-3 glass rounded-xl px-3 py-2 border border-purple-500/40">
+                    <img src={playerPreview.profile_image_url} className="w-9 h-9 rounded-full" />
+                    <div className="flex-1 min-w-0">
+                      <div className="text-sm font-medium">{playerPreview.display_name}</div>
+                      <div className="text-xs text-gray-500">@{playerPreview.twitch_login}</div>
+                    </div>
+                    <button
+                      onClick={addPlayer}
+                      className="px-3 py-1.5 rounded-lg text-xs font-semibold text-white"
+                      style={{ background: 'var(--purple)' }}
+                    >
+                      + Hinzufügen
+                    </button>
+                  </div>
+                )}
               </div>
             </div>
 

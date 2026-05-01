@@ -1,7 +1,50 @@
 import express from 'express';
+import axios from 'axios';
 import { supabase } from '../lib/supabase.js';
 
 const router = express.Router();
+
+// --- TWITCH LOOKUP ---
+
+let appAccessToken = null;
+let tokenExpiry = 0;
+
+async function getTwitchAppToken() {
+  if (appAccessToken && Date.now() < tokenExpiry) return appAccessToken;
+  const res = await axios.post('https://id.twitch.tv/oauth2/token', null, {
+    params: {
+      client_id: process.env.TWITCH_CLIENT_ID,
+      client_secret: process.env.TWITCH_CLIENT_SECRET,
+      grant_type: 'client_credentials',
+    },
+  });
+  appAccessToken = res.data.access_token;
+  tokenExpiry = Date.now() + (res.data.expires_in - 60) * 1000;
+  return appAccessToken;
+}
+
+router.get('/twitch-user/:login', async (req, res) => {
+  try {
+    const token = await getTwitchAppToken();
+    const { data } = await axios.get('https://api.twitch.tv/helix/users', {
+      params: { login: req.params.login },
+      headers: {
+        Authorization: `Bearer ${token}`,
+        'Client-Id': process.env.TWITCH_CLIENT_ID,
+      },
+    });
+    const user = data.data[0];
+    if (!user) return res.status(404).json({ error: 'User not found' });
+    res.json({
+      twitch_id: user.id,
+      twitch_login: user.login,
+      display_name: user.display_name,
+      profile_image_url: user.profile_image_url,
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
 
 // --- PLAYERS ---
 
