@@ -26,7 +26,8 @@ export function useGameSocket() {
   const socket = getGameSocket();
 
   useEffect(() => {
-    if (!sessionId || !twitchUser || !role) return;
+    if (!sessionId || !role) return;
+    if (role !== 'overlay' && !twitchUser) return;
 
     socket.connect();
 

@@ -10,8 +10,11 @@ export default function Overlay() {
   const { sessionId } = useParams<{ sessionId: string }>();
   const { session } = useStore();
 
-  useStore.getState().setSessionId(sessionId!);
-  useStore.getState().setRole('overlay');
+  useEffect(() => {
+    useStore.getState().setSessionId(sessionId!);
+    useStore.getState().setRole('overlay');
+  }, [sessionId]);
+
   useGameSocket();
   const { peerStreams } = useWebRTC(sessionId!);
 
