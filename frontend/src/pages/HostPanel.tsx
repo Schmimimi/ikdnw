@@ -1,20 +1,23 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useStore } from '../store';
 import { useGameSocket, getGameSocket } from '../hooks/useSocket';
-import type { Category, Player, Phase } from '../types';
+import type { Category, Phase } from '../types';
 
 export default function HostPanel() {
   const { sessionId } = useParams<{ sessionId: string }>();
-  const { session, twitchUser, connected } = useStore();
+  const { session, connected } = useStore();
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const [finaleP1, setFinaleP1] = useState<string>('');
   const [finaleP2, setFinaleP2] = useState<string>('');
   const socket = getGameSocket();
 
-  useStore.getState().setSessionId(sessionId!);
-  useStore.getState().setRole('host');
+  useEffect(() => {
+    useStore.getState().setSessionId(sessionId!);
+    useStore.getState().setRole('host');
+  }, [sessionId]);
+
   useGameSocket();
 
   const gameState = session?.game_states?.[0];
@@ -27,17 +30,14 @@ export default function HostPanel() {
   const awardPoints = (playerId: string, points: number, reason: string) =>
     socket.emit('award_points', { playerId, points, reason });
   const skipQuestion = () => socket.emit('skip_question');
-
   const pickQuestion = (categoryId: string) => {
     socket.emit('pick_question', { categoryId });
     setSelectedCategory(categoryId);
   };
-
   const startFinale = () => {
     if (!finaleP1 || !finaleP2) return;
     socket.emit('start_finale', { player1Id: finaleP1, player2Id: finaleP2 });
   };
-
   const startCategoryReveal = () => socket.emit('start_category_reveal');
   const finaleAnswer = (correct: boolean) => socket.emit('finale_answer', { correct });
   const pickFinaleQuestion = () => socket.emit('pick_finale_question');
@@ -46,12 +46,11 @@ export default function HostPanel() {
   const currentQuestion = gameState?.current_question;
   const currentCategory = categories.find(c => c.id === gameState?.current_category_id);
   const finaleState = gameState?.finale_state;
-
   const getPlayer = (id: string) => players.find(p => p.id === id);
   const getCatOwner = (cat: Category) => players.find(p => p.id === cat.owner_player_id);
 
   return (
-    <div className="min-h-screen flex flex-col gap-0" style={{ background: 'var(--dark)' }}>
+    <div className="min-h-screen flex flex-col" style={{ background: 'var(--dark)' }}>
       {/* Top bar */}
       <div className="glass border-b border-white/5 px-6 py-3 flex items-center justify-between">
         <div className="flex items-center gap-4">
@@ -63,16 +62,16 @@ export default function HostPanel() {
         </div>
         <div className="flex items-center gap-3 text-sm">
           <span className="text-gray-500">Phase:</span>
-          <span className="text-purple-400 font-mono">{phase}</span>
+          <span className="text-purple-400 font-mono">{phase || '—'}</span>
         </div>
       </div>
 
       <div className="flex flex-1 overflow-hidden">
         {/* LEFT: Phase control */}
-        <div className="w-72 flex flex-col gap-4 p-4 border-r border-white/5 overflow-y-auto">
+        <div className="w-64 flex flex-col gap-4 p-4 border-r border-white/5 overflow-y-auto">
           <div>
             <div className="text-xs uppercase tracking-widest text-gray-500 mb-3">Phasen</div>
-            <div className="flex flex-col gap-2">
+            <div className="flex flex-col gap-1">
               {([
                 ['LOBBY', '⏳ Lobby'],
                 ['SETUP', '⚙️ Setup'],
@@ -105,17 +104,17 @@ export default function HostPanel() {
             </button>
           )}
 
-          {/* Players in session */}
           <div>
-            <div className="text-xs uppercase tracking-widest text-gray-500 mb-3">Spieler*innen</div>
+            <div className="text-xs uppercase tracking-widest text-gray-500 mb-3">Spieler*innen ({players.length})</div>
             {players.length === 0 ? (
-              <div className="text-gray-600 text-sm">Noch keine Spieler verbunden</div>
+              <div className="text-gray-600 text-sm">Noch keine</div>
             ) : (
               <div className="flex flex-col gap-2">
                 {players.map(p => (
                   <div key={p.id} className="glass rounded-xl px-3 py-2 flex items-center gap-2">
-                    <img src={p.profile_image_url} className="w-7 h-7 rounded-full" />
-                    <span className="text-sm">{p.display_name}</span>
+                    <img src={p.profile_image_url} className="w-6 h-6 rounded-full" />
+                    <span className="text-sm truncate">{p.display_name}</span>
+                    <span className="ml-auto text-xs font-mono text-yellow-400">{scores[p.id] || 0}</span>
                   </div>
                 ))}
               </div>
@@ -123,15 +122,13 @@ export default function HostPanel() {
           </div>
         </div>
 
-        {/* CENTER: Main control */}
+        {/* CENTER */}
         <div className="flex-1 flex flex-col gap-4 p-4 overflow-y-auto">
 
           {/* Scoreboard */}
-          <div className="glass rounded-2xl p-4">
-            <div className="text-xs uppercase tracking-widest text-gray-500 mb-3">Punkte</div>
-            {sortedPlayers.length === 0 ? (
-              <div className="text-gray-600 text-sm">Noch keine Spieler</div>
-            ) : (
+          {sortedPlayers.length > 0 && (
+            <div className="glass rounded-2xl p-4">
+              <div className="text-xs uppercase tracking-widest text-gray-500 mb-3">Rangliste</div>
               <div className="flex gap-4">
                 {sortedPlayers.map((player, i) => (
                   <motion.div key={player.id} layout className="flex-1 glass rounded-xl p-3 text-center">
@@ -140,14 +137,14 @@ export default function HostPanel() {
                     <motion.div key={scores[player.id]} animate={{ scale: [1, 1.2, 1] }} className="score-badge text-3xl mt-1">
                       {scores[player.id] || 0}
                     </motion.div>
-                    {i === 0 && players.length > 1 && <div className="text-yellow-400 text-xs mt-1">👑 Führung</div>}
+                    {i === 0 && players.length > 1 && <div className="text-yellow-400 text-xs mt-1">👑</div>}
                   </motion.div>
                 ))}
               </div>
-            )}
-          </div>
+            </div>
+          )}
 
-          {/* Current Question */}
+          {/* Active Question */}
           <AnimatePresence>
             {currentQuestion && (
               <motion.div
@@ -157,41 +154,40 @@ export default function HostPanel() {
                 className="glass rounded-2xl p-5 border border-purple-500/40"
                 style={{ boxShadow: '0 0 40px rgba(124,58,237,0.15)' }}
               >
-                <div className="flex items-center gap-2 mb-3">
-                  {currentCategory && (
-                    <span className="text-xs bg-purple-500/20 text-purple-300 px-3 py-1 rounded-full border border-purple-500/30">
-                      {currentCategory.name}
-                    </span>
-                  )}
-                </div>
-                <div className="text-xl font-semibold mb-2 leading-snug">{currentQuestion.question_text}</div>
-                <div className="text-sm text-gray-400 border-t border-white/5 pt-3 mt-3">
+                {currentCategory && (
+                  <div className="text-xs text-purple-400 uppercase tracking-widest mb-2">{currentCategory.name}</div>
+                )}
+                <div className="text-xl font-semibold mb-3 leading-snug">{currentQuestion.question_text}</div>
+                <div className="text-sm border-t border-white/5 pt-3">
                   <span className="text-gray-500">Antwort: </span>
                   <span className="text-green-400 font-medium">{currentQuestion.answer_text}</span>
                 </div>
 
-                <div className="mt-4 flex flex-wrap gap-2">
-                  <div className="text-xs text-gray-500 w-full mb-1">Punkte vergeben:</div>
-                  {players.map(player => (
-                    <div key={player.id} className="flex gap-1 items-center">
-                      <span className="text-xs text-gray-400">{player.display_name}:</span>
-                      <button onClick={() => awardPoints(player.id, 400, 'surprise')} className="px-2 py-1 rounded text-xs font-bold text-white" style={{ background: '#059669' }}>+400</button>
-                      <button onClick={() => awardPoints(player.id, 100, 'expert')} className="px-2 py-1 rounded text-xs font-bold text-white" style={{ background: 'var(--purple)' }}>+100</button>
-                      <button onClick={() => awardPoints(player.id, 250, 'consolation')} className="px-2 py-1 rounded text-xs font-bold text-white" style={{ background: 'var(--gold)' }}>+250</button>
-                    </div>
-                  ))}
-                  <button onClick={skipQuestion} className="px-3 py-1 rounded text-xs text-gray-400 hover:text-white border border-white/10 hover:border-white/30 transition-all">
-                    ⏭ Überspringen
-                  </button>
+                <div className="mt-4">
+                  <div className="text-xs text-gray-500 mb-2">Punkte vergeben:</div>
+                  <div className="flex flex-wrap gap-2">
+                    {players.map(player => (
+                      <div key={player.id} className="flex items-center gap-1">
+                        <img src={player.profile_image_url} className="w-5 h-5 rounded-full" />
+                        <span className="text-xs text-gray-400 mr-1">{player.display_name}:</span>
+                        <button onClick={() => awardPoints(player.id, 400, 'surprise')} className="px-2 py-1 rounded text-xs font-bold text-white" style={{ background: '#059669' }}>+400</button>
+                        <button onClick={() => awardPoints(player.id, 100, 'expert')} className="px-2 py-1 rounded text-xs font-bold text-white" style={{ background: 'var(--purple)' }}>+100</button>
+                        <button onClick={() => awardPoints(player.id, 250, 'consolation')} className="px-2 py-1 rounded text-xs font-bold text-white" style={{ background: 'var(--gold)' }}>+250</button>
+                      </div>
+                    ))}
+                    <button onClick={skipQuestion} className="px-3 py-1 rounded text-xs text-gray-400 hover:text-white border border-white/10 hover:border-white/30 transition-all">
+                      ⏭ Skip
+                    </button>
+                  </div>
                 </div>
               </motion.div>
             )}
           </AnimatePresence>
 
-          {/* Category grid */}
+          {/* Categories */}
           {(phase === 'MAIN_ROUND' || phase === 'CATEGORY_REVEAL') && (
             <div>
-              <div className="text-xs uppercase tracking-widest text-gray-500 mb-3">Kategorien</div>
+              <div className="text-xs uppercase tracking-widest text-gray-500 mb-3">Kategorien – Frage ziehen</div>
               <div className="grid grid-cols-2 gap-3">
                 {categories.map(cat => {
                   const remaining = cat.questions?.filter(q => !q.played).length || 0;
@@ -212,8 +208,8 @@ export default function HostPanel() {
                       <div className="font-semibold text-sm mb-1">{cat.name}</div>
                       {cat.description && <div className="text-gray-500 text-xs mb-2">{cat.description}</div>}
                       <div className="flex items-center justify-between text-xs">
-                        <div className="text-gray-500">Experte: <span className="text-purple-300">{owner?.display_name}</span></div>
-                        <div className={`font-mono font-bold ${remaining === 0 ? 'text-gray-600' : 'text-cyan-400'}`}>{remaining}/{total}</div>
+                        <span className="text-gray-500">Experte: <span className="text-purple-300">{owner?.display_name || '—'}</span></span>
+                        <span className={`font-mono font-bold ${remaining === 0 ? 'text-gray-600' : 'text-cyan-400'}`}>{remaining}/{total}</span>
                       </div>
                     </motion.button>
                   );
@@ -225,22 +221,22 @@ export default function HostPanel() {
           {/* Finale Setup */}
           {phase === 'FINALE' && !finaleState && (
             <div className="glass rounded-2xl p-5">
-              <div className="text-xs uppercase tracking-widest text-gray-500 mb-4">Finale Setup</div>
+              <div className="text-xs uppercase tracking-widest text-gray-500 mb-4">Finale – Spieler wählen</div>
               <div className="flex gap-4 mb-4">
-                <div className="flex-1">
-                  <label className="text-xs text-gray-400 mb-1 block">Spieler 1</label>
-                  <select value={finaleP1} onChange={e => setFinaleP1(e.target.value)} className="w-full bg-black/40 border border-white/10 rounded-lg px-3 py-2 text-sm text-white outline-none">
-                    <option value="">Wählen...</option>
-                    {sortedPlayers.map(p => <option key={p.id} value={p.id}>{p.display_name} ({scores[p.id] || 0} Punkte)</option>)}
-                  </select>
-                </div>
-                <div className="flex-1">
-                  <label className="text-xs text-gray-400 mb-1 block">Spieler 2</label>
-                  <select value={finaleP2} onChange={e => setFinaleP2(e.target.value)} className="w-full bg-black/40 border border-white/10 rounded-lg px-3 py-2 text-sm text-white outline-none">
-                    <option value="">Wählen...</option>
-                    {sortedPlayers.filter(p => p.id !== finaleP1).map(p => <option key={p.id} value={p.id}>{p.display_name} ({scores[p.id] || 0} Punkte)</option>)}
-                  </select>
-                </div>
+                {[
+                  { label: 'Spieler 1', val: finaleP1, set: setFinaleP1, exclude: finaleP2 },
+                  { label: 'Spieler 2', val: finaleP2, set: setFinaleP2, exclude: finaleP1 },
+                ].map(({ label, val, set, exclude }) => (
+                  <div key={label} className="flex-1">
+                    <label className="text-xs text-gray-400 mb-1 block">{label}</label>
+                    <select value={val} onChange={e => set(e.target.value)} className="w-full bg-black/40 border border-white/10 rounded-lg px-3 py-2 text-sm text-white outline-none">
+                      <option value="">Wählen...</option>
+                      {sortedPlayers.filter(p => p.id !== exclude).map(p => (
+                        <option key={p.id} value={p.id}>{p.display_name} ({scores[p.id] || 0} Pts)</option>
+                      ))}
+                    </select>
+                  </div>
+                ))}
               </div>
               <button onClick={startFinale} disabled={!finaleP1 || !finaleP2} className="w-full py-3 rounded-xl font-bold text-white disabled:opacity-40" style={{ background: 'linear-gradient(135deg, var(--gold), #F97316)' }}>
                 🏆 Finale starten!
@@ -253,11 +249,11 @@ export default function HostPanel() {
             <div className="glass rounded-2xl p-5">
               <div className="text-xs uppercase tracking-widest text-gray-500 mb-4">Finale läuft</div>
               <div className="flex gap-4 mb-4">
-                {[finaleState.player1_id, finaleState.player2_id].map((pid) => {
+                {[finaleState.player1_id, finaleState.player2_id].map(pid => {
                   const p = getPlayer(pid);
                   const correct = finaleState.rounds.filter(r => r.answering_player_id === pid && r.correct).length;
                   return (
-                    <div key={pid} className="flex-1 glass rounded-xl p-3 text-center">
+                    <div key={pid} className={`flex-1 glass rounded-xl p-3 text-center border ${finaleState.current_answering_player_id === pid ? 'border-yellow-400' : 'border-transparent'}`}>
                       <img src={p?.profile_image_url} className="w-8 h-8 rounded-full mx-auto mb-1" />
                       <div className="text-xs text-gray-400">{p?.display_name}</div>
                       <div className="text-2xl font-display mt-1 text-green-400">{correct}</div>

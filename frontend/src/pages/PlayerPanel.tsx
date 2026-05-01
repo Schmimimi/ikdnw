@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { useParams } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { useStore } from '../store';
@@ -8,8 +8,11 @@ export default function PlayerPanel() {
   const { sessionId } = useParams<{ sessionId: string }>();
   const { twitchUser, session, connected } = useStore();
 
-  useStore.getState().setSessionId(sessionId!);
-  useStore.getState().setRole('player');
+  useEffect(() => {
+    useStore.getState().setSessionId(sessionId!);
+    useStore.getState().setRole('player');
+  }, [sessionId]);
+
   useGameSocket();
 
   const gameState = session?.game_states?.[0];
@@ -22,7 +25,7 @@ export default function PlayerPanel() {
   const sortedPlayers = [...players].sort((a, b) => (scores[b.id] || 0) - (scores[a.id] || 0));
 
   return (
-    <div className="min-h-screen flex flex-col p-6 gap-5" style={{ background: 'var(--dark)' }}>
+    <div className="min-h-screen flex flex-col p-5 gap-5" style={{ background: 'var(--dark)' }}>
 
       {/* Header */}
       <div className="flex items-center justify-between">
@@ -31,7 +34,7 @@ export default function PlayerPanel() {
             <img src={twitchUser.profile_image_url} className="w-10 h-10 rounded-full ring-2 ring-purple-500" />
           )}
           <div>
-            <div className="font-semibold">{twitchUser?.display_name}</div>
+            <div className="font-semibold">{twitchUser?.display_name || 'Spieler*in'}</div>
             <div className="text-xs text-gray-500">Spieler*in</div>
           </div>
         </div>
@@ -41,7 +44,7 @@ export default function PlayerPanel() {
         </div>
       </div>
 
-      {/* My Score */}
+      {/* Score */}
       <motion.div
         key={myScore}
         animate={{ scale: [1, 1.08, 1] }}
@@ -52,12 +55,12 @@ export default function PlayerPanel() {
         <div className="score-badge text-6xl">{myScore}</div>
       </motion.div>
 
-      {/* Current question */}
+      {/* Current question or phase info */}
       {currentQuestion ? (
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
-          className="glass rounded-2xl p-6 border border-purple-500/30"
+          className="glass rounded-2xl p-5 border border-purple-500/30"
           style={{ boxShadow: '0 0 30px rgba(124,58,237,0.2)' }}
         >
           {currentCategory && (
@@ -67,13 +70,13 @@ export default function PlayerPanel() {
         </motion.div>
       ) : (
         <div className="glass rounded-xl p-4 text-center text-gray-400 text-sm">
+          {!gameState?.phase && '⏳ Verbinde...'}
           {gameState?.phase === 'LOBBY' && '⏳ Warte auf den Host...'}
           {gameState?.phase === 'SETUP' && '⚙️ Setup läuft...'}
           {gameState?.phase === 'CATEGORY_REVEAL' && '🎯 Kategorien werden aufgedeckt!'}
-          {gameState?.phase === 'MAIN_ROUND' && '🎮 Hauptrunde – warte auf die nächste Frage...'}
+          {gameState?.phase === 'MAIN_ROUND' && '🎮 Warte auf die nächste Frage...'}
           {gameState?.phase === 'FINALE' && '🏆 Superfinale!'}
           {gameState?.phase === 'END' && '🎉 Show beendet!'}
-          {!gameState?.phase && '⏳ Verbinde...'}
         </div>
       )}
 
@@ -90,12 +93,8 @@ export default function PlayerPanel() {
               >
                 <span className="text-gray-600 w-4 text-sm">{i + 1}</span>
                 <img src={player.profile_image_url} className="w-7 h-7 rounded-full" />
-                <span className="flex-1 text-sm font-medium">{player.display_name}</span>
-                <motion.span
-                  key={scores[player.id]}
-                  animate={{ scale: [1, 1.2, 1] }}
-                  className="score-badge text-xl"
-                >
+                <span className="flex-1 text-sm font-medium truncate">{player.display_name}</span>
+                <motion.span key={scores[player.id]} animate={{ scale: [1, 1.2, 1] }} className="score-badge text-xl">
                   {scores[player.id] || 0}
                 </motion.span>
               </motion.div>
@@ -105,7 +104,7 @@ export default function PlayerPanel() {
       )}
 
       {/* My categories */}
-      {myPlayer && session?.categories && (
+      {myPlayer && session?.categories?.filter(c => c.assigned_to_player_id === myPlayer.id).length > 0 && (
         <div>
           <div className="text-xs uppercase tracking-widest text-gray-500 mb-3">Meine Kategorien</div>
           <div className="flex flex-col gap-2">
