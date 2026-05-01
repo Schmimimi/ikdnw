@@ -10,22 +10,30 @@ export interface PeerStream {
   stream: MediaStream;
 }
 
-export function useWebRTC(sessionId: string | null) {
+export function useWebRTC(sessionId: string | null, options: { receiveOnly?: boolean } = {}) {
   const { twitchUser, role } = useStore();
+  const { receiveOnly = false } = options;
   const [localStream, setLocalStream] = useState<MediaStream | null>(null);
   const [peerStreams, setPeerStreams] = useState<PeerStream[]>([]);
   const peersRef = useRef<Map<string, SimplePeer.Instance>>(new Map());
   const socket = getWebRTCSocket();
 
-  const peerId = twitchUser?.id || Math.random().toString(36).slice(2);
+  const peerId = twitchUser?.id || role || Math.random().toString(36).slice(2);
 
   const createPeer = useCallback((
     socketId: string,
     peerRole: string,
     initiator: boolean,
-    stream: MediaStream
+    stream: MediaStream | null
   ) => {
-    const peer = new SimplePeer({ initiator, stream, trickle: true });
+    const peerOptions: SimplePeer.Options = { initiator, trickle: true };
+    if (stream) {
+      peerOptions.stream = stream;
+    } else if (initiator) {
+      peerOptions.offerOptions = { offerToReceiveAudio: true, offerToReceiveVideo: true };
+    }
+
+    const peer = new SimplePeer(peerOptions);
 
     peer.on('signal', (signal) => {
       if (initiator) {
@@ -56,56 +64,79 @@ export function useWebRTC(sessionId: string | null) {
   useEffect(() => {
     if (!sessionId || !role) return;
 
-    // Get camera
+    const setupRoom = (stream: MediaStream | null) => {
+      socket.connect();
+      socket.emit('join_room', { sessionId, peerId, role });
+
+      socket.on('existing_peers', (peers: Array<{ peerId: string; socketId: string; role: string }>) => {
+        peers.forEach(({ socketId, role: pRole }) => {
+          createPeer(socketId, pRole, true, stream);
+        });
+      });
+
+      socket.on('peer_joined', ({ socketId, role: pRole }: { peerId: string; socketId: string; role: string }) => {
+        createPeer(socketId, pRole, false, stream);
+      });
+
+      socket.on('offer', ({ from, offer }: { from: string; offer: SimplePeer.SignalData }) => {
+        const peer = peersRef.current.get(from);
+        if (peer) peer.signal(offer);
+      });
+
+      socket.on('answer', ({ from, answer }: { from: string; answer: SimplePeer.SignalData }) => {
+        const peer = peersRef.current.get(from);
+        if (peer) peer.signal(answer);
+      });
+
+      socket.on('ice_candidate', ({ from, candidate }: { from: string; candidate: RTCIceCandidateInit }) => {
+        const peer = peersRef.current.get(from);
+        if (peer) peer.signal(candidate);
+      });
+
+      socket.on('peer_left', ({ socketId }: { socketId: string }) => {
+        peersRef.current.get(socketId)?.destroy();
+        peersRef.current.delete(socketId);
+        setPeerStreams((prev) => prev.filter(p => p.socketId !== socketId));
+      });
+    };
+
+    if (receiveOnly) {
+      setupRoom(null);
+      return () => {
+        peersRef.current.forEach(p => p.destroy());
+        peersRef.current.clear();
+        socket.off('existing_peers');
+        socket.off('peer_joined');
+        socket.off('offer');
+        socket.off('answer');
+        socket.off('ice_candidate');
+        socket.off('peer_left');
+        socket.disconnect();
+      };
+    }
+
+    let activeStream: MediaStream | null = null;
     navigator.mediaDevices.getUserMedia({ video: true, audio: true })
       .then((stream) => {
+        activeStream = stream;
         setLocalStream(stream);
-
-        socket.connect();
-        socket.emit('join_room', { sessionId, peerId, role });
-
-        // Existing peers in room → we initiate
-        socket.on('existing_peers', (peers: Array<{ peerId: string; socketId: string; role: string }>) => {
-          peers.forEach(({ socketId, role: pRole }) => {
-            createPeer(socketId, pRole, true, stream);
-          });
-        });
-
-        // New peer joined → they initiate to us
-        socket.on('peer_joined', ({ socketId, role: pRole }: { peerId: string; socketId: string; role: string }) => {
-          createPeer(socketId, pRole, false, stream);
-        });
-
-        socket.on('offer', ({ from, offer }: { from: string; offer: SimplePeer.SignalData }) => {
-          const peer = peersRef.current.get(from);
-          if (peer) peer.signal(offer);
-        });
-
-        socket.on('answer', ({ from, answer }: { from: string; answer: SimplePeer.SignalData }) => {
-          const peer = peersRef.current.get(from);
-          if (peer) peer.signal(answer);
-        });
-
-        socket.on('ice_candidate', ({ from, candidate }: { from: string; candidate: RTCIceCandidateInit }) => {
-          const peer = peersRef.current.get(from);
-          if (peer) peer.signal(candidate);
-        });
-
-        socket.on('peer_left', ({ socketId }: { socketId: string }) => {
-          peersRef.current.get(socketId)?.destroy();
-          peersRef.current.delete(socketId);
-          setPeerStreams((prev) => prev.filter(p => p.socketId !== socketId));
-        });
+        setupRoom(stream);
       })
       .catch((err) => console.error('[WebRTC] Camera access denied:', err));
 
     return () => {
-      localStream?.getTracks().forEach(t => t.stop());
+      activeStream?.getTracks().forEach(t => t.stop());
       peersRef.current.forEach(p => p.destroy());
       peersRef.current.clear();
+      socket.off('existing_peers');
+      socket.off('peer_joined');
+      socket.off('offer');
+      socket.off('answer');
+      socket.off('ice_candidate');
+      socket.off('peer_left');
       socket.disconnect();
     };
-  }, [sessionId, role]);
+  }, [sessionId, role, receiveOnly]);
 
   return { localStream, peerStreams };
 }

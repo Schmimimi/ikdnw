@@ -34,24 +34,28 @@ export function setupSocketHandlers(io) {
       console.log(`[Game] ${role} joined session ${sessionId}`);
     });
 
+    const getSessionId = (params) => params?.sessionId || socket.data?.sessionId;
+
     // HOST: Change game phase
-    socket.on('set_phase', async ({ phase }) => {
-      const { sessionId } = socket.data;
-      await updateGameState(sessionId, { phase });
+    socket.on('set_phase', async (params) => {
+      const sessionId = getSessionId(params);
+      if (!sessionId) return;
+      await updateGameState(sessionId, { phase: params.phase });
       const state = await loadSessionState(sessionId);
       gameNs.to(sessionId).emit('state_sync', state);
     });
 
     // HOST: Start category reveal animation
-    socket.on('start_category_reveal', async () => {
-      const { sessionId } = socket.data;
+    socket.on('start_category_reveal', async (params) => {
+      const sessionId = getSessionId(params);
+      if (!sessionId) return;
       const state = await loadSessionState(sessionId);
       gameNs.to(sessionId).emit('category_reveal_start', { categories: state.categories });
     });
 
     // HOST: Pick next question (random from category)
-    socket.on('pick_question', async ({ categoryId }) => {
-      const { sessionId } = socket.data;
+    socket.on('pick_question', async ({ categoryId, sessionId: paramSessionId }) => {
+      const sessionId = paramSessionId || socket.data?.sessionId;
 
       // Get unplayed questions for category
       const { data: questions } = await supabase
@@ -80,8 +84,8 @@ export function setupSocketHandlers(io) {
     });
 
     // HOST: Award points
-    socket.on('award_points', async ({ playerId, points, reason }) => {
-      const { sessionId } = socket.data;
+    socket.on('award_points', async ({ playerId, points, reason, sessionId: paramSessionId }) => {
+      const sessionId = paramSessionId || socket.data?.sessionId;
       const state = await loadSessionState(sessionId);
 
       const scores = state.game_state?.scores || {};
@@ -108,8 +112,8 @@ export function setupSocketHandlers(io) {
     });
 
     // HOST: Skip question without points
-    socket.on('skip_question', async () => {
-      const { sessionId } = socket.data;
+    socket.on('skip_question', async (params) => {
+      const sessionId = getSessionId(params);
       const state = await loadSessionState(sessionId);
 
       if (state.game_state?.current_question_id) {
@@ -130,8 +134,8 @@ export function setupSocketHandlers(io) {
     });
 
     // HOST: Start finale
-    socket.on('start_finale', async ({ player1Id, player2Id }) => {
-      const { sessionId } = socket.data;
+    socket.on('start_finale', async ({ player1Id, player2Id, sessionId: paramSessionId }) => {
+      const sessionId = paramSessionId || socket.data?.sessionId;
       const finaleState = {
         player1_id: player1Id,
         player2_id: player2Id,
@@ -152,8 +156,8 @@ export function setupSocketHandlers(io) {
     });
 
     // HOST: Finale question pick
-    socket.on('pick_finale_question', async () => {
-      const { sessionId } = socket.data;
+    socket.on('pick_finale_question', async (params) => {
+      const sessionId = getSessionId(params);
       const state = await loadSessionState(sessionId);
       const finaleState = state.game_state?.finale_state;
 
@@ -199,8 +203,8 @@ export function setupSocketHandlers(io) {
     });
 
     // HOST: Record finale answer
-    socket.on('finale_answer', async ({ correct }) => {
-      const { sessionId } = socket.data;
+    socket.on('finale_answer', async ({ correct, sessionId: paramSessionId }) => {
+      const sessionId = paramSessionId || socket.data?.sessionId;
       const state = await loadSessionState(sessionId);
       const finaleState = { ...state.game_state?.finale_state };
 

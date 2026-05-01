@@ -1,12 +1,14 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useRef } from 'react';
 import { useParams } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { useStore } from '../store';
 import { useGameSocket } from '../hooks/useSocket';
+import { useWebRTC } from '../hooks/useWebRTC';
 
 export default function PlayerPanel() {
   const { sessionId } = useParams<{ sessionId: string }>();
   const { twitchUser, session, connected } = useStore();
+  const videoRef = useRef<HTMLVideoElement>(null);
 
   useEffect(() => {
     useStore.getState().setSessionId(sessionId!);
@@ -14,6 +16,13 @@ export default function PlayerPanel() {
   }, [sessionId]);
 
   useGameSocket();
+  const { localStream } = useWebRTC(sessionId ?? null);
+
+  useEffect(() => {
+    if (videoRef.current && localStream) {
+      videoRef.current.srcObject = localStream;
+    }
+  }, [localStream]);
 
   const gameState = session?.game_states?.[0];
   const myPlayer = session?.players?.find(p => p.twitch_id === twitchUser?.id);
@@ -26,6 +35,17 @@ export default function PlayerPanel() {
 
   return (
     <div className="min-h-screen flex flex-col p-5 gap-5" style={{ background: 'var(--dark)' }}>
+
+      {/* Camera preview */}
+      <div className="glass rounded-2xl overflow-hidden" style={{ aspectRatio: '16/9' }}>
+        {localStream ? (
+          <video ref={videoRef} autoPlay playsInline muted style={{ width: '100%', height: '100%', objectFit: 'cover', transform: 'scaleX(-1)' }} />
+        ) : (
+          <div className="w-full h-full flex items-center justify-center text-gray-600 text-sm">
+            📷 Kamera wird gestartet...
+          </div>
+        )}
+      </div>
 
       {/* Header */}
       <div className="flex items-center justify-between">

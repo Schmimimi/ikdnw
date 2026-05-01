@@ -16,7 +16,7 @@ export default function Overlay() {
   }, [sessionId]);
 
   useGameSocket();
-  const { peerStreams } = useWebRTC(sessionId!);
+  const { peerStreams } = useWebRTC(sessionId!, { receiveOnly: true });
 
   const gameState = session?.game_states?.[0];
   const phase = gameState?.phase;

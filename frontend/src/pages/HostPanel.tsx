@@ -26,21 +26,22 @@ export default function HostPanel() {
   const categories = session?.categories || [];
   const scores = gameState?.scores || {};
 
-  const setPhase = (p: Phase) => socket.emit('set_phase', { phase: p });
+  const sid = sessionId!;
+  const setPhase = (p: Phase) => socket.emit('set_phase', { phase: p, sessionId: sid });
   const awardPoints = (playerId: string, points: number, reason: string) =>
-    socket.emit('award_points', { playerId, points, reason });
-  const skipQuestion = () => socket.emit('skip_question');
+    socket.emit('award_points', { playerId, points, reason, sessionId: sid });
+  const skipQuestion = () => socket.emit('skip_question', { sessionId: sid });
   const pickQuestion = (categoryId: string) => {
-    socket.emit('pick_question', { categoryId });
+    socket.emit('pick_question', { categoryId, sessionId: sid });
     setSelectedCategory(categoryId);
   };
   const startFinale = () => {
     if (!finaleP1 || !finaleP2) return;
-    socket.emit('start_finale', { player1Id: finaleP1, player2Id: finaleP2 });
+    socket.emit('start_finale', { player1Id: finaleP1, player2Id: finaleP2, sessionId: sid });
   };
-  const startCategoryReveal = () => socket.emit('start_category_reveal');
-  const finaleAnswer = (correct: boolean) => socket.emit('finale_answer', { correct });
-  const pickFinaleQuestion = () => socket.emit('pick_finale_question');
+  const startCategoryReveal = () => socket.emit('start_category_reveal', { sessionId: sid });
+  const finaleAnswer = (correct: boolean) => socket.emit('finale_answer', { correct, sessionId: sid });
+  const pickFinaleQuestion = () => socket.emit('pick_finale_question', { sessionId: sid });
 
   const sortedPlayers = [...players].sort((a, b) => (scores[b.id] || 0) - (scores[a.id] || 0));
   const currentQuestion = gameState?.current_question;

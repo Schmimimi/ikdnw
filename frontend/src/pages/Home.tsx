@@ -39,7 +39,7 @@ export default function Home() {
       >
         {/* Logo */}
         <div className="text-center">
-          <h1 className="font-display text-8xl tracking-widest gradient-text">QUIZSHOW</h1>
+          <h1 className="font-display text-6xl tracking-wider gradient-text leading-tight">ICH KANN DAS<br />NICHT WISSEN!</h1>
           <p className="text-gray-500 font-body mt-2 tracking-wider uppercase text-sm">Twitch Edition</p>
         </div>
 
