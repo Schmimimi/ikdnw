@@ -2,11 +2,11 @@ FROM node:20-alpine AS builder
 WORKDIR /app
 ARG VITE_BACKEND_URL
 ENV VITE_BACKEND_URL=$VITE_BACKEND_URL
-RUN apk add --no-cache python3 make g++
 COPY package.json ./
 RUN npm install
+RUN chmod +x ./node_modules/.bin/vite
 COPY . .
-RUN ./node_modules/.bin/vite build
+RUN node ./node_modules/vite/bin/vite.js build
 
 FROM nginx:alpine
 COPY --from=builder /app/dist /usr/share/nginx/html
