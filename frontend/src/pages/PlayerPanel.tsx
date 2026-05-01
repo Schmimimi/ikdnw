@@ -1,34 +1,29 @@
-import React, { useEffect, useRef } from 'react';
+import React from 'react';
 import { useParams } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { useStore } from '../store';
 import { useGameSocket } from '../hooks/useSocket';
-import { useWebRTC } from '../hooks/useWebRTC';
 
 export default function PlayerPanel() {
   const { sessionId } = useParams<{ sessionId: string }>();
   const { twitchUser, session, connected } = useStore();
-  const localVideoRef = useRef<HTMLVideoElement>(null);
 
   useStore.getState().setSessionId(sessionId!);
-  const socket = useGameSocket();
-  const { localStream } = useWebRTC(sessionId!);
-
-  useEffect(() => {
-    if (localVideoRef.current && localStream) {
-      localVideoRef.current.srcObject = localStream;
-    }
-  }, [localStream]);
+  useStore.getState().setRole('player');
+  useGameSocket();
 
   const gameState = session?.game_states?.[0];
   const myPlayer = session?.players?.find(p => p.twitch_id === twitchUser?.id);
   const myScore = myPlayer ? (gameState?.scores?.[myPlayer.id] || 0) : 0;
-
   const currentQuestion = gameState?.current_question;
   const currentCategory = session?.categories?.find(c => c.id === gameState?.current_category_id);
+  const players = session?.players || [];
+  const scores = gameState?.scores || {};
+  const sortedPlayers = [...players].sort((a, b) => (scores[b.id] || 0) - (scores[a.id] || 0));
 
   return (
-    <div className="min-h-screen flex flex-col p-6 gap-6" style={{ background: 'var(--dark)' }}>
+    <div className="min-h-screen flex flex-col p-6 gap-5" style={{ background: 'var(--dark)' }}>
+
       {/* Header */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
@@ -40,16 +35,16 @@ export default function PlayerPanel() {
             <div className="text-xs text-gray-500">Spieler*in</div>
           </div>
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2">
           <div className={`w-2 h-2 rounded-full ${connected ? 'bg-green-400' : 'bg-red-400'}`} />
           <span className="text-xs text-gray-500">{connected ? 'Verbunden' : 'Getrennt'}</span>
         </div>
       </div>
 
-      {/* Score */}
+      {/* My Score */}
       <motion.div
         key={myScore}
-        animate={{ scale: [1, 1.15, 1] }}
+        animate={{ scale: [1, 1.08, 1] }}
         transition={{ duration: 0.4 }}
         className="glass rounded-2xl p-6 text-center"
       >
@@ -57,49 +52,62 @@ export default function PlayerPanel() {
         <div className="score-badge text-6xl">{myScore}</div>
       </motion.div>
 
-      {/* Camera preview */}
-      <div className="glass rounded-2xl overflow-hidden aspect-video cam-container">
-        <video ref={localVideoRef} autoPlay muted playsInline className="w-full h-full object-cover" />
-        {!localStream && (
-          <div className="absolute inset-0 flex items-center justify-center text-gray-500">
-            <div className="text-center">
-              <div className="text-4xl mb-2">📷</div>
-              <div className="text-sm">Kamera wird geladen...</div>
-            </div>
-          </div>
-        )}
-      </div>
-
-      {/* Current question (if any) */}
-      {currentQuestion && (
+      {/* Current question */}
+      {currentQuestion ? (
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           className="glass rounded-2xl p-6 border border-purple-500/30"
-          style={{ boxShadow: '0 0 30px rgba(124, 58, 237, 0.2)' }}
+          style={{ boxShadow: '0 0 30px rgba(124,58,237,0.2)' }}
         >
           {currentCategory && (
-            <div className="text-xs uppercase tracking-widest text-purple-400 mb-2">{currentCategory.name}</div>
+            <div className="text-xs uppercase tracking-widest text-purple-400 mb-3">{currentCategory.name}</div>
           )}
           <div className="text-lg font-semibold leading-snug">{currentQuestion.question_text}</div>
         </motion.div>
-      )}
-
-      {/* Phase display */}
-      <div className="glass rounded-xl p-4 text-center">
-        <div className="text-gray-400 text-sm">
+      ) : (
+        <div className="glass rounded-xl p-4 text-center text-gray-400 text-sm">
           {gameState?.phase === 'LOBBY' && '⏳ Warte auf den Host...'}
+          {gameState?.phase === 'SETUP' && '⚙️ Setup läuft...'}
           {gameState?.phase === 'CATEGORY_REVEAL' && '🎯 Kategorien werden aufgedeckt!'}
-          {gameState?.phase === 'MAIN_ROUND' && '🎮 Hauptrunde läuft!'}
+          {gameState?.phase === 'MAIN_ROUND' && '🎮 Hauptrunde – warte auf die nächste Frage...'}
           {gameState?.phase === 'FINALE' && '🏆 Superfinale!'}
           {gameState?.phase === 'END' && '🎉 Show beendet!'}
+          {!gameState?.phase && '⏳ Verbinde...'}
         </div>
-      </div>
+      )}
+
+      {/* Scoreboard */}
+      {sortedPlayers.length > 0 && (
+        <div>
+          <div className="text-xs uppercase tracking-widest text-gray-500 mb-3">Rangliste</div>
+          <div className="flex flex-col gap-2">
+            {sortedPlayers.map((player, i) => (
+              <motion.div
+                key={player.id}
+                layout
+                className={`glass rounded-xl px-4 py-3 flex items-center gap-3 ${myPlayer?.id === player.id ? 'border border-purple-500/40' : ''}`}
+              >
+                <span className="text-gray-600 w-4 text-sm">{i + 1}</span>
+                <img src={player.profile_image_url} className="w-7 h-7 rounded-full" />
+                <span className="flex-1 text-sm font-medium">{player.display_name}</span>
+                <motion.span
+                  key={scores[player.id]}
+                  animate={{ scale: [1, 1.2, 1] }}
+                  className="score-badge text-xl"
+                >
+                  {scores[player.id] || 0}
+                </motion.span>
+              </motion.div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* My categories */}
-      {session?.categories && myPlayer && (
+      {myPlayer && session?.categories && (
         <div>
-          <div className="text-xs uppercase tracking-widest text-gray-500 mb-3">Meine zugewiesenen Kategorien</div>
+          <div className="text-xs uppercase tracking-widest text-gray-500 mb-3">Meine Kategorien</div>
           <div className="flex flex-col gap-2">
             {session.categories
               .filter(c => c.assigned_to_player_id === myPlayer.id)
